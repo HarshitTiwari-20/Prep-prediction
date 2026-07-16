@@ -686,8 +686,8 @@ export default function TradePage() {
 
         <div className={`grid grid-cols-1 lg:grid-cols-12 gap-8 ${!walletAddress ? "opacity-30 pointer-events-none select-none" : ""}`}>
           
-          {/* Sidebar - Staking Pools (Left Column, span 2) */}
-          <div className="lg:col-span-2 bg-[#0E0E0E] border border-[#1E1E1E] rounded-2xl p-4 flex flex-col gap-4 h-fit">
+          {/* Sidebar - Staking Pools (Left Column, span 3) */}
+          <div className="lg:col-span-3 bg-[#0E0E0E] border border-[#1E1E1E] rounded-2xl p-6 flex flex-col gap-5 h-fit">
             
             {/* Sidebar Tab Switcher */}
             <div className="flex border-b border-[#1E1E1E] pb-2 gap-2">
@@ -715,7 +715,7 @@ export default function TradePage() {
 
             {activeSidebarTab === "standard" ? (
               /* Blue Chips Section */
-              <div className="flex flex-col gap-2 max-h-[480px] overflow-y-auto pr-1">
+              <div className="flex flex-col gap-3 max-h-[480px] overflow-y-auto pr-1">
                 {[
                   { id: "BTC", label: "BTC/USDT", chain: "X Layer Testnet" },
                   { id: "ETH", label: "ETH/USDT", chain: "X Layer Testnet" },
@@ -729,7 +729,7 @@ export default function TradePage() {
                   <button
                     key={pool.id}
                     onClick={() => handleAssetChange(pool.id)}
-                    className={`w-full flex items-center justify-between p-2.5 rounded-xl border text-left transition-all ${
+                    className={`w-full flex items-center justify-between p-3 rounded-xl border text-left transition-all ${
                       selectedAsset === pool.id
                         ? "bg-[#1E1E1E] border-[#FFD500] text-white"
                         : "bg-[#0A0A0A] border-[#1E1E1E] text-[#8E8E8E] hover:border-[#2E2E2E]"
@@ -744,7 +744,7 @@ export default function TradePage() {
               </div>
             ) : (
               /* Solana Meme Pools Section */
-              <div className="flex flex-col gap-2 max-h-[480px] overflow-y-auto pr-1">
+              <div className="flex flex-col gap-3 max-h-[480px] overflow-y-auto pr-1">
                 {[
                   { id: "WIF", label: "WIF/SOL", chain: "Solana Devnet" },
                   { id: "BONK", label: "BONK/SOL", chain: "Solana Devnet" },
@@ -758,7 +758,7 @@ export default function TradePage() {
                   <button
                     key={pool.id}
                     onClick={() => handleAssetChange(pool.id)}
-                    className={`w-full flex items-center justify-between p-2.5 rounded-xl border text-left transition-all ${
+                    className={`w-full flex items-center justify-between p-3 rounded-xl border text-left transition-all ${
                       selectedAsset === pool.id
                         ? "bg-[#1E1E1E] border-[#FFD500] text-white"
                         : "bg-[#0A0A0A] border-[#1E1E1E] text-[#8E8E8E] hover:border-[#2E2E2E]"
@@ -775,8 +775,8 @@ export default function TradePage() {
 
           </div>
 
-          {/* Center Column: Net P&L, Chart, Round Info, Guard, and Active Stakes (Middle Column, span 7) */}
-          <div className="lg:col-span-7 flex flex-col gap-8">
+          {/* Center Column: Net P&L, Chart, Round Info, Guard, and Active Stakes (Middle Column, span 6) */}
+          <div className="lg:col-span-6 flex flex-col gap-8">
             
             {/* Real-time P&L Panel */}
             <div className="bg-[#0E0E0E] border border-[#1E1E1E] rounded-2xl p-5 flex items-center justify-between">
