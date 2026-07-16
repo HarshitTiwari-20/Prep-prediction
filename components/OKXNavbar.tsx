@@ -17,6 +17,7 @@ export default function OKXNavbar() {
   } = useWallet();
 
   const [isWalletConnecting, setIsWalletConnecting] = useState(false);
+  const [isFaucetOpen, setIsFaucetOpen] = useState(false);
 
   const connectWallet = async () => {
     setIsWalletConnecting(true);
@@ -165,6 +166,44 @@ export default function OKXNavbar() {
 
         {/* Action Panel */}
         <div className="flex items-center gap-4">
+          
+          {/* Faucets Popover */}
+          <div className="relative">
+            <button
+              onClick={() => setIsFaucetOpen(!isFaucetOpen)}
+              className="text-[#8E8E8E] hover:text-white text-xs px-2.5 py-1.5 rounded-md border border-[#1E1E1E] bg-[#0E0E0E] flex items-center gap-1 transition-all"
+            >
+              <span>🚰</span> Faucets
+            </button>
+            {isFaucetOpen && (
+              <div className="absolute right-0 mt-2 w-48 bg-[#0E0E0E] border border-[#1E1E1E] rounded-xl shadow-xl p-2 z-50 flex flex-col gap-1 text-xs">
+                <a
+                  href="https://www.okx.com/web3/faucet/xlayer"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="px-3 py-2 rounded-lg text-[#8E8E8E] hover:text-white hover:bg-[#1E1E1E] transition-colors"
+                >
+                  X Layer Faucet
+                </a>
+                <a
+                  href="https://faucet.solana.com/"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="px-3 py-2 rounded-lg text-[#8E8E8E] hover:text-white hover:bg-[#1E1E1E] transition-colors"
+                >
+                  Solana Faucet
+                </a>
+                <a
+                  href="https://t.me/testgiver_ton_bot"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="px-3 py-2 rounded-lg text-[#8E8E8E] hover:text-white hover:bg-[#1E1E1E] transition-colors"
+                >
+                  TON Testgiver Bot
+                </a>
+              </div>
+            )}
+          </div>
           {/* Chain Selector (visible only when disconnected) */}
           {!walletAddress ? (
             <div className="flex bg-[#0E0E0E] p-0.5 rounded-lg border border-[#1E1E1E] text-xs">
