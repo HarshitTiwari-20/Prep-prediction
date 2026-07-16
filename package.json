@@ -2,6 +2,7 @@
   "name": "okx-one",
   "version": "0.1.0",
   "private": true,
+  "type": "module",
   "scripts": {
     "dev": "next dev",
     "build": "next build",
@@ -9,17 +10,28 @@
     "lint": "eslint"
   },
   "dependencies": {
+    "@google/generative-ai": "^0.24.1",
+    "@openzeppelin/contracts": "^5.6.1",
+    "@solana/web3.js": "^1.98.4",
+    "@ton/core": "^0.63.1",
+    "@ton/ton": "^16.3.0",
+    "dotenv": "^17.4.2",
     "next": "16.2.10",
     "react": "19.2.4",
-    "react-dom": "19.2.4"
+    "react-dom": "19.2.4",
+    "zod": "^4.4.3"
   },
   "devDependencies": {
+    "@nomicfoundation/hardhat-toolbox": "^6.1.2",
     "@tailwindcss/postcss": "^4",
+    "@types/minimatch": "^6.0.0",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "eslint": "^9",
     "eslint-config-next": "16.2.10",
+    "ethers": "^6.17.0",
+    "hardhat": "2.22.17",
     "tailwindcss": "^4",
     "typescript": "^5"
   },

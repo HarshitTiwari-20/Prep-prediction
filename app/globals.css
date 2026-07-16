@@ -1,26 +1,53 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
-
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+  --background: #0A0A0A;
+  --foreground: #FFFFFF;
+  --okx-yellow: #FFD500;
+  --okx-black: #0E0E0E;
+  --okx-gray: #1E1E1E;
+  --okx-light-gray: #8E8E8E;
+  --okx-green: #00D180;
+  --okx-red: #FF4D4D;
+  --font-sans: var(--font-geist-sans), Arial, sans-serif;
 }
 
 body {
-  background: var(--background);
+  background-color: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-sans);
+  margin: 0;
+  padding: 0;
+}
+
+/* Custom scrollbars */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: #0A0A0A;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #2E2E2E;
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #4E4E4E;
+}
+
+/* Custom utility styles */
+.okx-glow-green {
+  box-shadow: 0 0 15px rgba(0, 209, 128, 0.15);
+}
+
+.okx-glow-red {
+  box-shadow: 0 0 15px rgba(255, 77, 77, 0.15);
+}
+
+.okx-glow-yellow {
+  box-shadow: 0 0 15px rgba(255, 213, 0, 0.15);
 }
