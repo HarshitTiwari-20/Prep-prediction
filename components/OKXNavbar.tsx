@@ -24,10 +24,19 @@ export default function OKXNavbar() {
       let address = "";
       
       if (selectedChain === "EVM") {
-        // Prioritize injected OKX Wallet provider, fallback to standard ethereum
         const provider = (window as any).okxwallet || (window as any).ethereum;
         
         if (provider) {
+          // Force authorization popup / account select screen on reconnect
+          try {
+            await provider.request({
+              method: "wallet_requestPermissions",
+              params: [{ eth_accounts: {} }]
+            });
+          } catch (permErr) {
+            console.warn("wallet_requestPermissions failed or rejected, trying requestAccounts directly.");
+          }
+
           const accounts = await provider.request({
             method: "eth_requestAccounts"
           });
@@ -35,25 +44,27 @@ export default function OKXNavbar() {
             address = accounts[0];
           }
         } else {
-          // Hardhat local node / mock fallback if no extension found
-          address = "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266";
+          alert("OKX Wallet or compatible EVM provider not found. Please install the OKX Wallet extension to proceed.");
+          setIsWalletConnecting(false);
+          return;
         }
       } else if (selectedChain === "Solana") {
-        // Prioritize OKX Solana provider
         const solana = (window as any).okxwallet?.solana || (window as any).solana;
         
         if (solana) {
-          const resp = await solana.connect();
+          // Force connection popup to appear by passing onlyIfTrusted: false
+          const resp = await solana.connect({ onlyIfTrusted: false });
           if (resp && resp.publicKey) {
             address = resp.publicKey.toString();
           } else if (resp && resp.address) {
             address = resp.address;
           }
         } else {
-          address = "8G2h1Pq9mBv5xY9aZ4pQeR1sT3uV5wY7zA9bC1dD2eEF";
+          alert("OKX Wallet or compatible Solana provider not found. Please install the OKX Wallet extension to proceed.");
+          setIsWalletConnecting(false);
+          return;
         }
       } else if (selectedChain === "TON") {
-        // Prioritize OKX TON provider
         const ton = (window as any).okxwallet?.ton || (window as any).ton;
         
         if (ton) {
@@ -62,7 +73,9 @@ export default function OKXNavbar() {
             address = accounts[0];
           }
         } else {
-          address = "EQD4g7YpZ5xY9aZ4pQeR1sT3uV5wY7zA9bC1dD2eEF3g4h";
+          alert("OKX Wallet or compatible TON provider not found. Please install the OKX Wallet extension to proceed.");
+          setIsWalletConnecting(false);
+          return;
         }
       }
 

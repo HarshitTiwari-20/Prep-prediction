@@ -4,6 +4,7 @@ import React, { useState, useEffect } from "react";
 import OKXNavbar from "@/components/OKXNavbar";
 import OKXFooter from "@/components/OKXFooter";
 import { useWallet } from "@/components/WalletContext";
+import { ethers } from "ethers";
 
 interface BetItem {
   address: string;
@@ -80,9 +81,33 @@ export default function HistoryPage() {
     });
   };
 
-  const handleClaim = (betRoundId: number) => {
+  const handleClaim = async (betRoundId: number) => {
     let payoutAmount = 0;
     let assetName = "ETH";
+
+    // If connected with a real EVM wallet, execute the actual on-chain transaction
+    const isMock = !walletAddress || walletAddress.includes("(Mock");
+    if (selectedChain === "EVM" && !isMock) {
+      try {
+        const provider = new ethers.BrowserProvider((window as any).okxwallet || (window as any).ethereum);
+        const signer = await provider.getSigner();
+        const poolAddress = process.env.NEXT_PUBLIC_PREDICTION_POOL_ADDRESS || "0xDc64a140Aa3E981100a9becA4E685f962f0cF6C9";
+        
+        const contract = new ethers.Contract(
+          poolAddress,
+          ["function claimPayout(uint256 _roundId) external"],
+          signer
+        );
+
+        const tx = await contract.claimPayout(betRoundId);
+        console.log("Claim payout transaction sent:", tx.hash);
+        await tx.wait();
+      } catch (err: any) {
+        console.error("Onchain claim transaction failed:", err);
+        alert(`Claim transaction failed: ${err.message || err}`);
+        return; // Stop if transaction fails
+      }
+    }
 
     const updated = userBets.map((bet) => {
       if (bet.roundId === betRoundId && bet.status === "Win") {
@@ -100,8 +125,8 @@ export default function HistoryPage() {
     localStorage.setItem("okx_user_bets", JSON.stringify(updated));
     calculateStats(updated);
 
-    // Update simulated balance in localStorage
-    if (typeof window !== "undefined") {
+    // Update simulated balance in localStorage if mock
+    if (isMock && typeof window !== "undefined") {
       const balanceKey = `okx_sim_balance_${assetName}`;
       const storedBal = localStorage.getItem(balanceKey);
       const currentBal = storedBal ? parseFloat(storedBal) : 0.0;

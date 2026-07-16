@@ -29,9 +29,10 @@ export default function TradePage() {
 
   const [selectedAsset, setSelectedAsset] = useState("BTC"); // Trading pool (default to BTC/USDT)
   const [selectedDuration, setSelectedDuration] = useState("1m");
+  const [activeSidebarTab, setActiveSidebarTab] = useState<"standard" | "meme">("standard");
   
   // Staking Asset - The user can select which token to stake with
-  const [stakeAsset, setStakeAsset] = useState("BTC"); 
+  const [stakeAsset, setStakeAsset] = useState("ETH"); 
   
   // Wallet Balance - Tracks the balance of the selected stakeAsset
   const [balance, setBalance] = useState(0.0);
@@ -42,8 +43,8 @@ export default function TradePage() {
   const [roundId, setRoundId] = useState(1048);
 
   // Pool state (total stakes in active round)
-  const [totalUpStakes, setTotalUpStakes] = useState(10.0);
-  const [totalDownStakes, setTotalDownStakes] = useState(8.0);
+  const [totalUpStakes, setTotalUpStakes] = useState(0.0);
+  const [totalDownStakes, setTotalDownStakes] = useState(0.0);
 
   // User placed bets (loaded & synced with History page)
   const [userBets, setUserBets] = useState<BetItem[]>([]);
@@ -61,6 +62,48 @@ export default function TradePage() {
 
   // Hydration protection
   const [mounted, setMounted] = useState(false);
+
+  // OKX API Ticker Data State
+  const [tickerData, setTickerData] = useState<{
+    last: string;
+    change24h: string;
+    high24h: string;
+    low24h: string;
+  } | null>(null);
+
+  useEffect(() => {
+    if (!mounted) return;
+    let active = true;
+    const fetchTicker = async () => {
+      try {
+        const instId = `${selectedAsset}-USDT`;
+        const response = await fetch(`/api/okx-ticker?instId=${instId}`);
+        const json = await response.json();
+        if (active && json && json.code === "0" && json.data && json.data.length > 0) {
+          const d = json.data[0];
+          const lastPrice = parseFloat(d.last) || 0;
+          const openPrice = parseFloat(d.open24h) || 0;
+          const change = openPrice > 0 ? ((lastPrice - openPrice) / openPrice) * 100 : 0;
+          
+          setTickerData({
+            last: lastPrice.toFixed(lastPrice < 0.1 ? 6 : 4),
+            change24h: `${change >= 0 ? "+" : ""}${change.toFixed(2)}%`,
+            high24h: parseFloat(d.high24h).toFixed(lastPrice < 0.1 ? 6 : 4),
+            low24h: parseFloat(d.low24h).toFixed(lastPrice < 0.1 ? 6 : 4)
+          });
+        }
+      } catch (err) {
+        console.error("Failed to fetch OKX ticker data:", err);
+      }
+    };
+
+    fetchTicker();
+    const interval = setInterval(fetchTicker, 5000);
+    return () => {
+      active = false;
+      clearInterval(interval);
+    };
+  }, [selectedAsset, mounted]);
 
   // Fetch actual onchain balance (EVM) or simulated balance
   const fetchOnchainBalance = useCallback(async (address: string) => {
@@ -140,7 +183,7 @@ export default function TradePage() {
         }
       } else {
         const storedSimBalance = localStorage.getItem(`okx_sim_balance_SOL`);
-        setBalance(storedSimBalance ? parseFloat(storedSimBalance) : 15.0);
+        setBalance(storedSimBalance ? parseFloat(storedSimBalance) : 0.0);
       }
     } else if (selectedChain === "TON" && isTonAddress && !isMock) {
       try {
@@ -160,20 +203,7 @@ export default function TradePage() {
     } else {
       // Mock wallet or cross-chain fallback (e.g. EVM wallet address connected, but trading SOL pool)
       const storedSimBalance = localStorage.getItem(`okx_sim_balance_${stakeAsset}`);
-      if (storedSimBalance) {
-        setBalance(parseFloat(storedSimBalance));
-      } else {
-        const defaultBalances: { [key: string]: number } = {
-          "BTC": 0.5,
-          "ETH": 2.5,
-          "SOL": 15.0,
-          "TON": 120.0,
-          "USDC": 1000.0,
-          "USDT": 1000.0
-        };
-        const defaultBal = defaultBalances[stakeAsset] || 0.0;
-        setBalance(defaultBal);
-      }
+      setBalance(storedSimBalance ? parseFloat(storedSimBalance) : 0.0);
     }
   }, [stakeAsset, selectedChain]);
 
@@ -307,6 +337,34 @@ export default function TradePage() {
     }
   }, [selectedChain]);
 
+  // Run Gemini API Key validity check on mount
+  useEffect(() => {
+    if (!mounted) return;
+    const checkGeminiKey = async () => {
+      try {
+        const response = await fetch("/api/gemini-check");
+        const data = await response.json();
+        if (data.status === "success") {
+          setAiLogs((prev) => [
+            `[AI Guard] Gemini API Check: Connected successfully. Key is valid.`,
+            ...prev
+          ]);
+        } else {
+          setAiLogs((prev) => [
+            `[AI Guard] Gemini API Check: Failed (${data.message})`,
+            ...prev
+          ]);
+        }
+      } catch (err: any) {
+        setAiLogs((prev) => [
+          `[AI Guard] Gemini API Check: Request error (${err.message || err})`,
+          ...prev
+        ]);
+      }
+    };
+    checkGeminiKey();
+  }, [mounted]);
+
   // Update balance when walletAddress, stakeAsset, or selectedChain changes
   useEffect(() => {
     if (walletAddress) {
@@ -328,22 +386,23 @@ export default function TradePage() {
   const handleAssetChange = (asset: string) => {
     setSelectedAsset(asset);
     
-    // Automatically update the default staking token to match the selected pool asset
-    setStakeAsset(asset);
-    
-    // Automatically map asset to chain type
-    if (asset === "SOL") {
+    // Automatically map asset to chain type and set appropriate stakeAsset
+    if (["SOL", "WIF", "BONK", "BOME", "POPCAT", "DOGE", "SHIB", "PEPE", "FLOKI"].includes(asset)) {
       setSelectedChain("Solana");
+      setStakeAsset("SOL");
     } else if (asset === "TON") {
       setSelectedChain("TON");
+      setStakeAsset("TON");
     } else {
       setSelectedChain("EVM");
+      setStakeAsset("ETH"); // EVM pools (BTC, ETH, SUI, XRP, ADA, AVAX) stake native ETH
     }
   };
 
   const totalPool = totalUpStakes + totalDownStakes;
   const upMultiplier = totalUpStakes > 0 ? ((totalPool * 0.8) / totalUpStakes).toFixed(2) : "1.80";
   const downMultiplier = totalDownStakes > 0 ? ((totalPool * 0.8) / totalDownStakes).toFixed(2) : "2.20";
+  const activePosition = userBets.find((b) => b.roundId === roundId && b.pool === selectedAsset && b.status === "Pending");
 
   // Check if balance is insufficient
   const stakeValue = parseFloat(stakeAmount) || 0;
@@ -373,8 +432,8 @@ export default function TradePage() {
   useEffect(() => {
     if (!mounted) return;
     
-    // Generate simulated bets if we are disconnected, in mock wallet, or there are no events in the feed
-    const shouldSimulate = !walletAddress || walletAddress.includes("(Mock") || betsFeed.length === 0;
+    // Generate simulated bets if we are disconnected or in mock wallet
+    const shouldSimulate = !walletAddress || walletAddress.includes("(Mock");
     if (!shouldSimulate) return;
 
     const betSim = setInterval(() => {
@@ -439,8 +498,8 @@ export default function TradePage() {
 
     // Setup next round
     setRoundId((r) => r + 1);
-    setTotalUpStakes(2.0 + Math.random() * 3);
-    setTotalDownStakes(2.0 + Math.random() * 3);
+    setTotalUpStakes(0.0);
+    setTotalDownStakes(0.0);
     setBetsFeed([]); // Clear live bets feed for next round
   };
 
@@ -452,15 +511,18 @@ export default function TradePage() {
 
     if (isInsufficient) return; // Prevent action
 
-    // Deduct balance locally
-    const newBalance = balance - stakeValue;
-    setBalance(newBalance);
-    localStorage.setItem(`okx_sim_balance_${stakeAsset}`, newBalance.toString());
+    // Deduct balance locally if simulated, or execute real transactions
+    const isMock = !walletAddress || walletAddress.includes("(Mock");
+    if (isMock) {
+      const newBalance = balance - stakeValue;
+      setBalance(newBalance);
+      localStorage.setItem(`okx_sim_balance_${stakeAsset}`, newBalance.toString());
+    }
 
-    // EVM Chain contract transaction (Triggered only if user stakes ETH and uses real connection)
-    if (selectedChain === "EVM" && stakeAsset === "ETH" && !walletAddress.includes("(Mock")) {
+    // EVM Chain contract transaction (Triggered if using real EVM connection)
+    if (selectedChain === "EVM" && !isMock) {
       try {
-        const provider = new ethers.BrowserProvider((window as any).ethereum);
+        const provider = new ethers.BrowserProvider((window as any).okxwallet || (window as any).ethereum);
         const signer = await provider.getSigner();
         const poolAddress = process.env.NEXT_PUBLIC_PREDICTION_POOL_ADDRESS || "0xDc64a140Aa3E981100a9becA4E685f962f0cF6C9";
         
@@ -474,8 +536,105 @@ export default function TradePage() {
           value: ethers.parseEther(stakeAmount)
         });
         console.log("Staked successfully onchain. Tx:", tx.hash);
-      } catch (err) {
+        await tx.wait();
+        await fetchOnchainBalance(walletAddress);
+      } catch (err: any) {
         console.error("Contract stake transaction failed", err);
+        alert(`Staking transaction failed: ${err.message || err}`);
+        return; // Block local bet placement if on-chain transaction fails/gets rejected
+      }
+    } else if (selectedChain === "Solana" && !isMock) {
+      try {
+        const solana = (window as any).okxwallet?.solana || (window as any).solana || (window as any).phantom?.solana;
+        if (!solana) {
+          alert("Solana wallet provider not found.");
+          return;
+        }
+
+        // Dynamically resolve correct Solana address if session connected via EVM
+        let solAddress = "";
+        const isEvmAddress = walletAddress.startsWith("0x");
+        const isTonAddress = walletAddress.startsWith("EQ") || walletAddress.startsWith("UQ") || walletAddress.includes("-") || walletAddress.includes("_");
+        const isSolAddress = !isEvmAddress && !isTonAddress;
+
+        if (isSolAddress) {
+          solAddress = walletAddress;
+        } else {
+          try {
+            if (solana.publicKey) {
+              solAddress = solana.publicKey.toString();
+            } else {
+              const resp = await solana.connect({ onlyIfTrusted: true });
+              if (resp && resp.publicKey) {
+                solAddress = resp.publicKey.toString();
+              }
+            }
+          } catch (e) {
+            // Silent catch
+          }
+        }
+
+        if (!solAddress) {
+          alert("Solana wallet public key not found. Please connect your Solana wallet in your extension to proceed.");
+          return;
+        }
+
+        const { Connection, PublicKey, Transaction, SystemProgram } = await import("@solana/web3.js");
+        const connection = new Connection("https://api.devnet.solana.com", "confirmed");
+        
+        const senderPubkey = new PublicKey(solAddress);
+        // Destination vault address (valid base58 public key)
+        const receiver = "3J98t1WpEZ73CNmQviecrnyiWrnqRhWN8VRe9ssja6n1";
+        const receiverPubkey = new PublicKey(receiver);
+
+        const lamports = Math.floor(parseFloat(stakeAmount) * 1_000_000_000);
+        
+        const transaction = new Transaction().add(
+          SystemProgram.transfer({
+            fromPubkey: senderPubkey,
+            toPubkey: receiverPubkey,
+            lamports: lamports
+          })
+        );
+
+        const { blockhash } = await connection.getLatestBlockhash();
+        transaction.recentBlockhash = blockhash;
+        transaction.feePayer = senderPubkey;
+
+        const res = await solana.signAndSendTransaction(transaction);
+        const signature = typeof res === "string" ? res : res.signature;
+        
+        console.log("Solana transfer transaction sent. Sig:", signature);
+        await connection.confirmTransaction(signature, "confirmed");
+        await fetchOnchainBalance(walletAddress);
+      } catch (err: any) {
+        console.error("Solana transaction failed", err);
+        alert(`Solana transaction failed: ${err.message || err}`);
+        return; // Block local bet placement
+      }
+    } else if (selectedChain === "TON" && !isMock) {
+      try {
+        const ton = (window as any).okxwallet?.ton || (window as any).ton;
+        if (!ton) {
+          alert("TON wallet provider not found.");
+          return;
+        }
+
+        const receiver = "0QD4g7YpZ5xY9aZ4pQeR1sT3uV5wY7zA9bC1dD2eEF3g4h";
+        const nanotons = Math.floor(parseFloat(stakeAmount) * 1_000_000_000).toString();
+
+        await ton.send("ton_sendTransaction", [{
+          to: receiver,
+          value: nanotons,
+          data: ""
+        }]);
+        console.log("TON transaction submitted successfully.");
+        // Wait 10 seconds and re-fetch TON balance
+        setTimeout(() => fetchOnchainBalance(walletAddress), 10000);
+      } catch (err: any) {
+        console.error("TON transaction failed", err);
+        alert(`TON transaction failed: ${err.message || err}`);
+        return; // Block local bet placement
       }
     } else {
       console.log(`Simulated vault transfer of ${stakeAmount} ${stakeAsset} to keeper address.`);
@@ -525,40 +684,99 @@ export default function TradePage() {
           </div>
         )}
 
-        <div className={`grid grid-cols-1 lg:grid-cols-4 gap-8 ${!walletAddress ? "opacity-30 pointer-events-none select-none" : ""}`}>
+        <div className={`grid grid-cols-1 lg:grid-cols-12 gap-8 ${!walletAddress ? "opacity-30 pointer-events-none select-none" : ""}`}>
           
-          {/* Sidebar - Staking Pools (Coins logos removed) */}
-          <div className="lg:col-span-1 bg-[#0E0E0E] border border-[#1E1E1E] rounded-2xl p-4 flex flex-col gap-3">
-            <h2 className="text-sm font-bold text-[#8E8E8E] px-2 mb-2 uppercase tracking-wider">
-              Trading Pools
-            </h2>
-            {[
-              { id: "BTC", name: "Bitcoin Pool", chain: "X Layer Testnet" },
-              { id: "ETH", name: "Ethereum Pool", chain: "X Layer Testnet" },
-              { id: "SOL", name: "Solana Pool", chain: "Solana Devnet" },
-              { id: "TON", name: "TON Pool", chain: "TON Testnet" },
-              { id: "USDC", name: "USDC Pool", chain: "X Layer Testnet" },
-              { id: "USDT", name: "USDT Pool", chain: "X Layer Testnet" }
-            ].map((pool) => (
+          {/* Sidebar - Staking Pools (Left Column, span 2) */}
+          <div className="lg:col-span-2 bg-[#0E0E0E] border border-[#1E1E1E] rounded-2xl p-4 flex flex-col gap-4 h-fit">
+            
+            {/* Sidebar Tab Switcher */}
+            <div className="flex border-b border-[#1E1E1E] pb-2 gap-2">
               <button
-                key={pool.id}
-                onClick={() => handleAssetChange(pool.id)}
-                className={`w-full flex items-center justify-between p-3.5 rounded-xl border text-left transition-all ${
-                  selectedAsset === pool.id
-                    ? "bg-[#1E1E1E] border-[#FFD500] text-white"
-                    : "bg-[#0A0A0A] border-[#1E1E1E] text-[#8E8E8E] hover:border-[#2E2E2E]"
+                onClick={() => setActiveSidebarTab("standard")}
+                className={`flex-1 pb-1 text-[11px] font-black uppercase tracking-wider text-center transition-all ${
+                  activeSidebarTab === "standard"
+                    ? "text-[#FFD500] border-b-2 border-[#FFD500]"
+                    : "text-[#8E8E8E] hover:text-white border-b-2 border-transparent"
                 }`}
               >
-                <div>
-                  <div className="text-sm font-bold text-white">{pool.id}/USDT</div>
-                  <div className="text-[10px] text-[#8E8E8E] mt-0.5">{pool.chain}</div>
-                </div>
+                Trade Pools
               </button>
-            ))}
+              <button
+                onClick={() => setActiveSidebarTab("meme")}
+                className={`flex-1 pb-1 text-[11px] font-black uppercase tracking-wider text-center transition-all ${
+                  activeSidebarTab === "meme"
+                    ? "text-[#FFD500] border-b-2 border-[#FFD500]"
+                    : "text-[#8E8E8E] hover:text-white border-b-2 border-transparent"
+                }`}
+              >
+                Meme Pools
+              </button>
+            </div>
+
+            {activeSidebarTab === "standard" ? (
+              /* Blue Chips Section */
+              <div className="flex flex-col gap-2 max-h-[480px] overflow-y-auto pr-1">
+                {[
+                  { id: "BTC", label: "BTC/USDT", chain: "X Layer Testnet" },
+                  { id: "ETH", label: "ETH/USDT", chain: "X Layer Testnet" },
+                  { id: "SOL", label: "SOL/USDT", chain: "Solana Devnet" },
+                  { id: "TON", label: "TON/USDT", chain: "TON Testnet" },
+                  { id: "SUI", label: "SUI/USDT", chain: "X Layer Testnet" },
+                  { id: "XRP", label: "XRP/USDT", chain: "X Layer Testnet" },
+                  { id: "ADA", label: "ADA/USDT", chain: "X Layer Testnet" },
+                  { id: "AVAX", label: "AVAX/USDT", chain: "X Layer Testnet" }
+                ].map((pool) => (
+                  <button
+                    key={pool.id}
+                    onClick={() => handleAssetChange(pool.id)}
+                    className={`w-full flex items-center justify-between p-2.5 rounded-xl border text-left transition-all ${
+                      selectedAsset === pool.id
+                        ? "bg-[#1E1E1E] border-[#FFD500] text-white"
+                        : "bg-[#0A0A0A] border-[#1E1E1E] text-[#8E8E8E] hover:border-[#2E2E2E]"
+                    }`}
+                  >
+                    <div>
+                      <div className="text-xs font-bold text-white">{pool.label}</div>
+                      <div className="text-[9px] text-[#8E8E8E] mt-0.5">{pool.chain}</div>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            ) : (
+              /* Solana Meme Pools Section */
+              <div className="flex flex-col gap-2 max-h-[480px] overflow-y-auto pr-1">
+                {[
+                  { id: "WIF", label: "WIF/SOL", chain: "Solana Devnet" },
+                  { id: "BONK", label: "BONK/SOL", chain: "Solana Devnet" },
+                  { id: "BOME", label: "BOME/SOL", chain: "Solana Devnet" },
+                  { id: "POPCAT", label: "POPCAT/SOL", chain: "Solana Devnet" },
+                  { id: "DOGE", label: "DOGE/SOL", chain: "Solana Devnet" },
+                  { id: "SHIB", label: "SHIB/SOL", chain: "Solana Devnet" },
+                  { id: "PEPE", label: "PEPE/SOL", chain: "Solana Devnet" },
+                  { id: "FLOKI", label: "FLOKI/SOL", chain: "Solana Devnet" }
+                ].map((pool) => (
+                  <button
+                    key={pool.id}
+                    onClick={() => handleAssetChange(pool.id)}
+                    className={`w-full flex items-center justify-between p-2.5 rounded-xl border text-left transition-all ${
+                      selectedAsset === pool.id
+                        ? "bg-[#1E1E1E] border-[#FFD500] text-white"
+                        : "bg-[#0A0A0A] border-[#1E1E1E] text-[#8E8E8E] hover:border-[#2E2E2E]"
+                    }`}
+                  >
+                    <div>
+                      <div className="text-xs font-bold text-white">{pool.label}</div>
+                      <div className="text-[9px] text-[#8E8E8E] mt-0.5">{pool.chain}</div>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            )}
+
           </div>
 
-          {/* Main Area */}
-          <div className="lg:col-span-3 flex flex-col gap-8">
+          {/* Center Column: Net P&L, Chart, Round Info, Guard, and Active Stakes (Middle Column, span 7) */}
+          <div className="lg:col-span-7 flex flex-col gap-8">
             
             {/* Real-time P&L Panel */}
             <div className="bg-[#0E0E0E] border border-[#1E1E1E] rounded-2xl p-5 flex items-center justify-between">
@@ -589,165 +807,46 @@ export default function TradePage() {
 
             {/* TradingView Chart */}
             <div className="bg-[#0E0E0E] border border-[#1E1E1E] rounded-2xl p-4">
-              <div className="flex items-center justify-between mb-4">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-4 border-b border-[#1E1E1E] pb-4">
                 <div className="flex items-center gap-3">
-                  <span className="text-base font-bold">{selectedAsset}/USDT</span>
+                  <span className="text-base font-bold">
+                    {["WIF", "BONK", "BOME", "POPCAT"].includes(selectedAsset) ? `${selectedAsset}/SOL` : `${selectedAsset}/USDT`}
+                  </span>
                   <span className="text-xs bg-[#1E1E1E] px-2 py-1 rounded text-[#8E8E8E]">
                     {selectedDuration} Interval
                   </span>
                 </div>
+
+                {/* OKX API Ticker Data */}
+                {tickerData && (
+                  <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-xs font-mono">
+                    <div>
+                      <span className="text-[#8E8E8E] mr-1.5">OKX Price:</span>
+                      <span className="font-bold text-[#FFD500]">${tickerData.last}</span>
+                    </div>
+                    <div>
+                      <span className="text-[#8E8E8E] mr-1.5">24h Chg:</span>
+                      <span className={`font-bold ${tickerData.change24h.startsWith("+") ? "text-[#00D180]" : "text-[#FF4D4D]"}`}>
+                        {tickerData.change24h}
+                      </span>
+                    </div>
+                    <div className="hidden sm:block">
+                      <span className="text-[#8E8E8E] mr-1.5">24h High:</span>
+                      <span className="font-bold text-white">${tickerData.high24h}</span>
+                    </div>
+                    <div className="hidden sm:block">
+                      <span className="text-[#8E8E8E] mr-1.5">24h Low:</span>
+                      <span className="font-bold text-white">${tickerData.low24h}</span>
+                    </div>
+                  </div>
+                )}
               </div>
               <TradingViewChart symbol={`${selectedAsset}/USDT`} />
             </div>
 
-            {/* Betting Panel Grid */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-              
-              {/* Pool multipliers & countdown */}
-              <div className="bg-[#0E0E0E] border border-[#1E1E1E] rounded-2xl p-6 flex flex-col justify-between">
-                <div>
-                  <div className="flex justify-between items-center mb-6">
-                    <span className="text-sm font-bold text-[#8E8E8E]">Round #{roundId} Info</span>
-                    <span className="text-xs text-[#FFD500] font-mono font-bold flex items-center gap-1">
-                      <span className="animate-ping h-2 w-2 rounded-full bg-[#FFD500] inline-block"></span>
-                      {countdown}s left
-                    </span>
-                  </div>
 
-                  <div className="grid grid-cols-2 gap-4 mb-6">
-                    <div className="bg-[#0A0A0A] border border-[#1E1E1E] rounded-xl p-4 text-center">
-                      <div className="text-xs text-[#8E8E8E]">UP Payout</div>
-                      <div className="text-xl font-black text-[#00D180] mt-1">{upMultiplier}x</div>
-                      <div className="text-[10px] text-[#8E8E8E] mt-0.5">{totalUpStakes.toFixed(2)} staked</div>
-                    </div>
-                    <div className="bg-[#0A0A0A] border border-[#1E1E1E] rounded-xl p-4 text-center">
-                      <div className="text-xs text-[#8E8E8E]">DOWN Payout</div>
-                      <div className="text-xl font-black text-[#FF4D4D] mt-1">{downMultiplier}x</div>
-                      <div className="text-[10px] text-[#8E8E8E] mt-0.5">{totalDownStakes.toFixed(2)} staked</div>
-                    </div>
-                  </div>
 
-                  {/* Ratio bar */}
-                  <div className="mb-4">
-                    <div className="flex justify-between text-xs text-[#8E8E8E] mb-2 font-mono">
-                      <span>UP: {totalPool > 0 ? ((totalUpStakes / totalPool) * 100).toFixed(0) : "50"}%</span>
-                      <span>DOWN: {totalPool > 0 ? ((totalDownStakes / totalPool) * 100).toFixed(0) : "50"}%</span>
-                    </div>
-                    <div className="w-full bg-[#FF4D4D] h-2 rounded-full overflow-hidden flex">
-                      <div
-                        className="bg-[#00D180] h-full transition-all duration-500"
-                        style={{ width: `${totalPool > 0 ? (totalUpStakes / totalPool) * 100 : 50}%` }}
-                      ></div>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="bg-[#0A0A0A] border border-[#1E1E1E] rounded-xl p-3 flex justify-between items-center text-xs">
-                  <span className="text-[#8E8E8E]">Active Round Pool:</span>
-                  <span className="font-extrabold text-white">
-                    {totalPool.toFixed(3)} {stakeAsset}
-                  </span>
-                </div>
-              </div>
-
-              {/* Stake input & Action (Predict buttons disabled after 10s of round starting) */}
-              <div className="bg-[#0E0E0E] border border-[#1E1E1E] rounded-2xl p-6 flex flex-col justify-between">
-                <div>
-                  <div className="flex justify-between items-center mb-4">
-                    <h3 className="text-sm font-bold text-white">Place Prediction</h3>
-                    {!isStakingOpen && (
-                      <span className="text-[10px] bg-[#FF4D4D]/15 text-[#FF4D4D] px-2 py-0.5 rounded font-semibold">
-                        Staking Closed
-                      </span>
-                    )}
-                  </div>
-                  
-                  {/* Stake With Token Selector */}
-                  <div className="flex items-center justify-between mb-3 text-xs">
-                    <span className="text-[#8E8E8E]">STAKE WITH:</span>
-                    <select
-                      value={stakeAsset}
-                      disabled={!isStakingOpen}
-                      onChange={(e) => setStakeAsset(e.target.value)}
-                      className="bg-[#0A0A0A] border border-[#1E1E1E] px-3 py-1.5 rounded-lg text-white font-semibold outline-none cursor-pointer"
-                    >
-                      {["ETH", "SOL", "TON", "USDC", "USDT"].map((asset) => (
-                        <option key={asset} value={asset}>
-                          {asset}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-
-                  {/* Stake input */}
-                  <div className="bg-[#0A0A0A] border border-[#1E1E1E] rounded-xl p-3 flex items-center justify-between mb-2">
-                    <div>
-                      <span className="text-[10px] text-[#8E8E8E] block">STAKE AMOUNT</span>
-                      <input
-                        type="number"
-                        value={stakeAmount}
-                        disabled={!isStakingOpen}
-                        onChange={(e) => setStakeAmount(e.target.value)}
-                        className="bg-transparent border-none outline-none font-bold text-lg text-white mt-1 w-full disabled:opacity-50"
-                      />
-                    </div>
-                    <span className="font-bold text-xs bg-[#1E1E1E] px-3 py-1 rounded text-white uppercase font-mono">
-                      {stakeAsset}
-                    </span>
-                  </div>
-
-                  {/* Insufficient message */}
-                  {isInsufficient ? (
-                    <div className="text-[#FF4D4D] text-[11px] font-bold mb-4 animate-pulse">
-                      insufficient message
-                    </div>
-                  ) : (
-                    <div className="h-4 mb-4"></div>
-                  )}
-
-                  {/* Preset stakes */}
-                  <div className="grid grid-cols-4 gap-2 mb-6">
-                    {["0.01", "0.05", "0.1", "0.5"].map((preset) => (
-                      <button
-                        key={preset}
-                        disabled={!isStakingOpen}
-                        onClick={() => setStakeAmount(preset)}
-                        className={`py-2 text-xs font-semibold rounded-lg border transition-all ${
-                          stakeAmount === preset
-                            ? "bg-[#FFD500]/10 border-[#FFD500] text-[#FFD500]"
-                            : "bg-[#0A0A0A] border-[#1E1E1E] text-[#8E8E8E] hover:border-[#2E2E2E]"
-                        } disabled:opacity-50`}
-                      >
-                        {preset}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Staking buttons - Active only during the first 10 seconds of round */}
-                <div className="grid grid-cols-2 gap-4">
-                  <button
-                    onClick={() => handlePredict(true)}
-                    disabled={!isStakingOpen || isInsufficient}
-                    className="bg-[#00D180] hover:bg-[#00E58C] text-black font-extrabold py-3.5 rounded-xl transition-all active:scale-95 flex flex-col items-center justify-center shadow-[0_0_15px_rgba(0,209,128,0.15)] disabled:opacity-30 disabled:pointer-events-none"
-                  >
-                    <span className="text-sm">{isStakingOpen ? "PREDICT UP" : "CLOSED"}</span>
-                    <span className="text-[10px] font-bold opacity-80">{isStakingOpen ? "Bullish" : "Round Active"}</span>
-                  </button>
-                  <button
-                    onClick={() => handlePredict(false)}
-                    disabled={!isStakingOpen || isInsufficient}
-                    className="bg-[#FF4D4D] hover:bg-[#FF6666] text-white font-extrabold py-3.5 rounded-xl transition-all active:scale-95 flex flex-col items-center justify-center shadow-[0_0_15px_rgba(255,77,77,0.15)] disabled:opacity-30 disabled:pointer-events-none"
-                  >
-                    <span className="text-sm">{isStakingOpen ? "PREDICT DOWN" : "CLOSED"}</span>
-                    <span className="text-[10px] font-bold opacity-80">{isStakingOpen ? "Bearish" : "Round Active"}</span>
-                  </button>
-                </div>
-              </div>
-
-            </div>
-
-            {/* Bottom Row - AI logs & Active bets (Demo data/Placeholders removed) */}
+            {/* Bottom Row - AI logs & Active bets */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-8">
               
               {/* AI Verification Logger */}
@@ -764,15 +863,15 @@ export default function TradePage() {
                   ) : (
                     aiLogs.map((log, index) => (
                       <div key={index} className="flex gap-2">
-                        <span className="text-[#FFD500]">❯</span>
-                        <span>{log}</span>
+                         <span className="text-[#FFD500]">❯</span>
+                         <span>{log}</span>
                       </div>
                     ))
                   )}
                 </div>
               </div>
 
-              {/* Active bets in current round (Demo data removed - starts empty) */}
+              {/* Active bets in current round */}
               <div className="bg-[#0E0E0E] border border-[#1E1E1E] rounded-2xl p-6">
                 <h3 className="text-sm font-bold text-white mb-4">Round #{roundId} Active Stakes</h3>
                 <div className="overflow-x-auto h-[160px] overflow-y-auto">
@@ -814,9 +913,183 @@ export default function TradePage() {
                   </table>
                 </div>
               </div>
+            </div>
+          </div>
 
+          {/* Place Prediction & Round Info (Right Column, span 3) */}
+          <div className="lg:col-span-3 sticky top-24 h-fit flex flex-col gap-6">
+            
+            {/* Place Prediction Card */}
+            <div className="bg-[#0E0E0E] border border-[#1E1E1E] rounded-2xl p-6 flex flex-col justify-between gap-6">
+              <div>
+                <div className="flex justify-between items-center mb-4">
+                  <h3 className="text-sm font-bold text-white">Place Prediction</h3>
+                  {!isStakingOpen && (
+                    <span className="text-[10px] bg-[#FF4D4D]/15 text-[#FF4D4D] px-2 py-0.5 rounded font-semibold">
+                      Staking Closed
+                    </span>
+                  )}
+                </div>
+                
+                {/* Stake With Token Info */}
+                <div className="flex items-center justify-between mb-4 text-xs">
+                  <span className="text-[#8E8E8E]">STAKE WITH:</span>
+                  <span className="bg-[#1E1E1E] text-white px-3 py-1 rounded-md font-extrabold font-mono border border-[#2E2E2E]">
+                    {stakeAsset}
+                  </span>
+                </div>
+
+                {/* Stake input */}
+                <div className="bg-[#0A0A0A] border border-[#1E1E1E] rounded-xl p-3 flex items-center justify-between mb-3">
+                  <div>
+                    <span className="text-[10px] text-[#8E8E8E] block">STAKE AMOUNT</span>
+                    <input
+                      type="number"
+                      value={stakeAmount}
+                      disabled={!isStakingOpen}
+                      onChange={(e) => setStakeAmount(e.target.value)}
+                      className="bg-transparent border-none outline-none font-bold text-lg text-white mt-1 w-full disabled:opacity-50"
+                    />
+                  </div>
+                  <span className="font-bold text-xs bg-[#1E1E1E] px-3 py-1 rounded text-white uppercase font-mono">
+                    {stakeAsset}
+                  </span>
+                </div>
+
+                {/* Insufficient message */}
+                {isInsufficient ? (
+                  <div className="text-[#FF4D4D] text-[11px] font-bold mb-4 animate-pulse">
+                    insufficient message
+                  </div>
+                ) : (
+                  <div className="h-4 mb-4"></div>
+                )}
+
+                {/* Preset stakes */}
+                <div className="grid grid-cols-4 gap-2 mb-6">
+                  {["0.01", "0.05", "0.1", "0.5"].map((preset) => (
+                    <button
+                      key={preset}
+                      disabled={!isStakingOpen}
+                      onClick={() => setStakeAmount(preset)}
+                      className={`py-2 text-xs font-semibold rounded-lg border transition-all ${
+                        stakeAmount === preset
+                          ? "bg-[#FFD500]/10 border-[#FFD500] text-[#FFD500]"
+                          : "bg-[#0A0A0A] border-[#1E1E1E] text-[#8E8E8E] hover:border-[#2E2E2E]"
+                      } disabled:opacity-50`}
+                    >
+                      {preset}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Staking buttons - Active only during the first 10 seconds of round */}
+              <div className="grid grid-cols-2 gap-4">
+                <button
+                  onClick={() => handlePredict(true)}
+                  disabled={!isStakingOpen || isInsufficient}
+                  className="bg-[#00D180] hover:bg-[#00E58C] text-black font-extrabold py-3.5 rounded-xl transition-all active:scale-95 flex flex-col items-center justify-center shadow-[0_0_15px_rgba(0,209,128,0.15)] disabled:opacity-30 disabled:pointer-events-none"
+                >
+                  <span className="text-sm">{isStakingOpen ? "PREDICT UP" : "CLOSED"}</span>
+                  <span className="text-[10px] font-bold opacity-80">{isStakingOpen ? "Bullish" : "Round Active"}</span>
+                </button>
+                <button
+                  onClick={() => handlePredict(false)}
+                  disabled={!isStakingOpen || isInsufficient}
+                  className="bg-[#FF4D4D] hover:bg-[#FF6666] text-white font-extrabold py-3.5 rounded-xl transition-all active:scale-95 flex flex-col items-center justify-center shadow-[0_0_15px_rgba(255,77,77,0.15)] disabled:opacity-30 disabled:pointer-events-none"
+                >
+                  <span className="text-sm">{isStakingOpen ? "PREDICT DOWN" : "CLOSED"}</span>
+                  <span className="text-[10px] font-bold opacity-80">{isStakingOpen ? "Bearish" : "Round Active"}</span>
+                </button>
+              </div>
             </div>
 
+            {/* Active Position Card */}
+            <div className="bg-[#0E0E0E] border border-[#1E1E1E] rounded-2xl p-5 flex flex-col gap-4">
+              <h3 className="text-sm font-bold text-white flex items-center justify-between">
+                <span>Active Position</span>
+                {activePosition && (
+                  <span className="animate-pulse h-2 w-2 rounded-full bg-[#00D180]"></span>
+                )}
+              </h3>
+              
+              {activePosition ? (
+                <div className="bg-[#0A0A0A] border border-[#1E1E1E] rounded-xl p-4 flex flex-col gap-3 font-mono text-xs">
+                  <div className="flex justify-between">
+                    <span className="text-[#8E8E8E]">Instrument:</span>
+                    <span className="text-white font-bold">{activePosition.pool}/USDT</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-[#8E8E8E]">Direction:</span>
+                    <span className={`font-black ${activePosition.position === "UP" ? "text-[#00D180]" : "text-[#FF4D4D]"}`}>
+                      {activePosition.position === "UP" ? "🟢 BULLISH (UP)" : "🔴 BEARISH (DOWN)"}
+                    </span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-[#8E8E8E]">Staked:</span>
+                    <span className="text-white font-bold">{activePosition.amount} {activePosition.asset}</span>
+                  </div>
+                  <div className="flex justify-between border-t border-[#1E1E1E] pt-2.5 mt-1">
+                    <span className="text-[#8E8E8E]">Est. Payout:</span>
+                    <span className="text-[#FFD500] font-black">
+                      {(parseFloat(activePosition.amount) * (activePosition.position === "UP" ? parseFloat(upMultiplier) : parseFloat(downMultiplier))).toFixed(3)} {activePosition.asset}
+                    </span>
+                  </div>
+                </div>
+              ) : (
+                <div className="bg-[#0A0A0A] border border-[#1E1E1E] border-dashed rounded-xl p-4 text-center text-xs text-[#8E8E8E] py-6">
+                  No active positions in Round #{roundId}
+                </div>
+              )}
+            </div>
+
+            {/* Pool multipliers & countdown */}
+            <div className="bg-[#0E0E0E] border border-[#1E1E1E] rounded-2xl p-6 flex flex-col justify-between">
+              <div>
+                <div className="flex justify-between items-center mb-6">
+                  <span className="text-sm font-bold text-[#8E8E8E]">Round #{roundId} Info</span>
+                  <span className="text-xs text-[#FFD500] font-mono font-bold flex items-center gap-1">
+                    <span className="animate-ping h-2 w-2 rounded-full bg-[#FFD500] inline-block"></span>
+                    {countdown}s left
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4 mb-6">
+                  <div className="bg-[#0A0A0A] border border-[#1E1E1E] rounded-xl p-4 text-center">
+                    <div className="text-xs text-[#8E8E8E]">UP Payout</div>
+                    <div className="text-xl font-black text-[#00D180] mt-1">{upMultiplier}x</div>
+                    <div className="text-[10px] text-[#8E8E8E] mt-0.5">{totalUpStakes.toFixed(2)} staked</div>
+                  </div>
+                  <div className="bg-[#0A0A0A] border border-[#1E1E1E] rounded-xl p-4 text-center">
+                    <div className="text-xs text-[#8E8E8E]">DOWN Payout</div>
+                    <div className="text-xl font-black text-[#FF4D4D] mt-1">{downMultiplier}x</div>
+                    <div className="text-[10px] text-[#8E8E8E] mt-0.5">{totalDownStakes.toFixed(2)} staked</div>
+                  </div>
+                </div>
+
+                {/* Ratio bar */}
+                <div className="mb-4">
+                  <div className="flex justify-between text-xs text-[#8E8E8E] mb-2 font-mono">
+                    <span>UP: {totalPool > 0 ? ((totalUpStakes / totalPool) * 100).toFixed(0) : "50"}%</span>
+                    <span>DOWN: {totalPool > 0 ? ((totalDownStakes / totalPool) * 100).toFixed(0) : "50"}%</span>
+                  </div>
+                  <div className="w-full bg-[#FF4D4D] h-2 rounded-full overflow-hidden flex">
+                    <div
+                      className="bg-[#00D180] h-full transition-all duration-500"
+                      style={{ width: `${totalPool > 0 ? (totalUpStakes / totalPool) * 100 : 50}%` }}
+                    ></div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="bg-[#0A0A0A] border border-[#1E1E1E] rounded-xl p-3 flex justify-between items-center text-xs">
+                <span className="text-[#8E8E8E]">Active Round Pool:</span>
+                <span className="font-extrabold text-white">
+                  {totalPool.toFixed(3)} {stakeAsset}
+                </span>
+              </div>
+            </div>
           </div>
         </div>
       </main>
